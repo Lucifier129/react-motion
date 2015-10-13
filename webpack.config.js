@@ -76,7 +76,10 @@ module.exports = {
     ],
   },
   resolve: {
-    extensions: ['', '.js', '.jsx']
+    extensions: ['', '.js', '.jsx'],
+    alias: {
+      react: path.join(path.dirname(__dirname), 'refer-dom')
+    }
   },
   plugins: plugins,
   eslint: {configFile: '.eslintrc'},
