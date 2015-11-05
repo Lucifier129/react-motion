@@ -360,9 +360,12 @@
 /* 6 */
 /***/ function(module, exports) {
 
-	"use strict";
+	'use strict';
 	
 	exports.__esModule = true;
+	var ATTR_ID = 'data-referid';
+	
+	exports.ATTR_ID = ATTR_ID;
 	var info = {
 		component: {
 			amount: 0,
@@ -421,7 +424,25 @@
 			return obj[method] = nativeMethod;
 		};
 	};
+	
 	exports.wrapNative = wrapNative;
+	if (!Object.assign) {
+		Object.assign = function (target) {
+			for (var _len3 = arguments.length, args = Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
+				args[_key3 - 1] = arguments[_key3];
+			}
+	
+			args.forEach(function (source) {
+				for (var key in source) {
+					if (!source.hasOwnProperty(key)) {
+						continue;
+					}
+					target[key] = source[key];
+				}
+			});
+			return target;
+		};
+	}
 
 /***/ },
 /* 7 */
@@ -636,18 +657,29 @@
 	exports.clearDidMounts = clearDidMounts;
 	var unmounts = _util.info.unmounts = {};
 	var callUnmount = function callUnmount(node) {
-		var id = node.dataset.referid;
+		var id = node.getAttribute(_util.ATTR_ID);
 		if (id && isFn(unmounts[id])) {
 			unmounts[id]();
 			delete unmounts[id];
 		}
 	};
-	var callUnmounts = function callUnmounts(node) {
-		if (!node || !node.dataset || !node.dataset.referid) {
+	var callUnmounts = function callUnmounts(nextNode, node) {
+		//if node is undefined, it would be call by removeChild
+		if (!node) {
+			node = nextNode;
+		}
+		var attr = node && node.getAttribute(_util.ATTR_ID);
+		if (!attr) {
 			return;
 		}
-		callUnmount(node);
-		var widgets = node.querySelectorAll('[data-referid]');
+		//if nextNode exist，it must be calling by replaceChild method
+		if (nextNode && nextNode.nodeName) {
+			nextNode.setAttribute(_util.ATTR_ID, attr);
+			node.nextNode = nextNode;
+		} else {
+			callUnmount(node);
+		}
+		var widgets = node.querySelectorAll('[' + _util.ATTR_ID + ']');
 		Array.prototype.slice.call(widgets).forEach(callUnmount);
 	};
 	exports.callUnmounts = callUnmounts;
@@ -675,7 +707,7 @@
 		}
 	};
 	var getDOMNode = function getDOMNode(refs, refKey, refValue) {
-		var selector = '[data-referid="' + refValue + '"]';
+		var selector = '[data-refid="' + refValue + '"]';
 		Object.defineProperty(refs, refKey, {
 			get: function get() {
 				var node = document.body.querySelector(selector);
@@ -704,9 +736,9 @@
 		}
 		var refs = refsStore[compId] = refsStore[compId] || {};
 		if (isStr(refValue)) {
-			var referid = '' + compId + '-' + refValue;
-			getDOMNode(refs, refKey, referid);
-			return { referid: referid };
+			var refid = '' + compId + '-' + refValue;
+			getDOMNode(refs, refKey, refid);
+			return refid;
 		}
 		refs[refKey] = refValue;
 	};
@@ -741,7 +773,7 @@
 			setCompId(id);
 			var vnode = component.vnode = component.render();
 			var node = component.node = (0, _virtualDom.create)(vnode);
-			var referid = node.dataset.referid = node.dataset.referid || id;
+			node.setAttribute(_util.ATTR_ID, id);
 			resetCompId();
 			component.componentWillMount();
 			component.refs = getRefs(id);
@@ -755,10 +787,10 @@
 			var didMount = function didMount() {
 				_util.info.component.mounts += 1;
 				component.componentDidMount();
-				if (isFn(unmounts[referid])) {
-					unmounts[referid] = (0, _util.pipe)(willUnmount, unmounts[referid]);
+				if (isFn(unmounts[id])) {
+					unmounts[id] = (0, _util.pipe)(willUnmount, unmounts[id]);
 				} else {
-					unmounts[referid] = willUnmount;
+					unmounts[id] = willUnmount;
 				}
 			};
 			didMounts.push(didMount);
@@ -815,7 +847,7 @@
 		return (_ref = {}, _ref[WILL_UPDATE] = shouldComponentUpdate, _ref);
 	};
 	
-	var merge = function merge(nextState) {
+	var setState = function setState(nextState) {
 		return function (state) {
 			return Object.assign({}, state, nextState);
 		};
@@ -828,12 +860,17 @@
 			var $cache = this.$cache = {
 				keepSilent: false
 			};
-			var handlers = [this.getHandlers(), getHook(this)];
+			var handlers = [this.getHandlers(), { setState: setState }, getHook(this)];
 			var store = this.$store = (0, _refer.createStore)(handlers);
 			this.dispatch = store.dispatch;
 			this.actions = store.actions;
 			this.props = props;
 			this.refs = {};
+			store.subscribe(function () {
+				if (store.getState() == null) {
+					debugger;
+				}
+			});
 		}
 	
 		Component.prototype.getDOMNode = function getDOMNode() {
@@ -852,7 +889,7 @@
 			if (isFn(nextState)) {
 				nextState = nextState(state, props);
 			}
-			this.$store.dispatch(merge, nextState);
+			this.$store.dispatch('setState', nextState);
 			if (isFn(callback)) {
 				callback();
 			}
@@ -882,8 +919,8 @@
 			var props = this.props;
 			var id = this.$id;
 	
-			var nextProps = $cache.props || props;
-			var nextState = $cache.state || state;
+			var nextProps = isObj($cache.props) ? $cache.props : props;
+			var nextState = isObj($cache.state) ? $cache.state : state;
 			$cache.props = $cache.state = null;
 			this.componentWillUpdate(nextProps, nextState);
 			this.props = nextProps;
@@ -894,6 +931,11 @@
 			var patches = (0, _virtualDom.diff)(vnode, nextVnode);
 			richPatch(node, patches);
 			resetCompId();
+			//update this.node, if component render new element
+			if (node.nextNode) {
+				this.node = node.nextNode;
+				node.innerHTML = '';
+			}
 			this.refs = getRefs(id);
 			this.vnode = nextVnode;
 			this.componentDidUpdate(props, state);
@@ -908,11 +950,10 @@
 				return this.$store.getState();
 			},
 			set: function (nextState) {
-				var $cache = this.$cache;
-	
-				$cache.keepSilent = true;
+				if (nextState == null) {
+					debugger;
+				}
 				this.$store.replaceState(nextState, true);
-				$cache.keepSilent = false;
 			}
 		}]);
 	
@@ -965,12 +1006,12 @@
 			};
 			mixins = mixins.concat(mixinsForDefaultProps);
 		}
-		var Class = (function (_Component) {
-			var _class = function Class(props, context) {
+		var Klass = (function (_Component) {
+			var _class = function Klass(props, context) {
 				_classCallCheck(this, _class);
 	
 				_Component.call(this, props, context);
-				bindContext(this, Class.prototype);
+				bindContext(this, Klass.prototype);
 				if (isObj(defaultProps)) {
 					mixinsForDefaultProps.componentWillReceiveProps(props);
 				}
@@ -983,11 +1024,11 @@
 	
 			return _class;
 		})(Component);
-		combineMixins(Class.prototype, mixins.concat(options));
+		combineMixins(Klass.prototype, mixins.concat(options));
 		if (isObj(options.statics)) {
-			Object.assign(Class, options.statics);
+			Object.assign(Klass, options.statics);
 		}
-		return Class;
+		return Klass;
 	};
 	exports.createClass = createClass;
 
@@ -2920,46 +2961,10 @@
 	  return value == null || DOMProperty.hasBooleanValue[name] && !value || DOMProperty.hasNumericValue[name] && isNaN(value) || DOMProperty.hasPositiveNumericValue[name] && value < 1 || DOMProperty.hasOverloadedBooleanValue[name] && value === false;
 	}
 	
-	if (false) {
-	  var reactProps = {
-	    children: true,
-	    dangerouslySetInnerHTML: true,
-	    key: true,
-	    ref: true
-	  };
-	  var warnedProperties = {};
-	
-	  var warnUnknownProperty = function warnUnknownProperty(name) {
-	    if (reactProps.hasOwnProperty(name) && reactProps[name] || warnedProperties.hasOwnProperty(name) && warnedProperties[name]) {
-	      return;
-	    }
-	
-	    warnedProperties[name] = true;
-	    var lowerCasedName = name.toLowerCase();
-	
-	    // data-* attributes should be lowercase; suggest the lowercase version
-	    var standardName = DOMProperty.isCustomAttribute(lowerCasedName) ? lowerCasedName : DOMProperty.getPossibleStandardName.hasOwnProperty(lowerCasedName) ? DOMProperty.getPossibleStandardName[lowerCasedName] : null;
-	
-	    // For now, only warn when we have a suggested correction. This prevents
-	    // logging too much when using transferPropsTo.
-	    "production" !== process.env.NODE_ENV ? warning(standardName == null, "Unknown DOM property %s. Did you mean %s?", name, standardName) : null;
-	  };
-	}
-	
 	/**
 	 * Operations for dealing with DOM properties.
 	 */
 	var DOMPropertyOperations = {
-	
-	  /**
-	   * Creates markup for the ID property.
-	   *
-	   * @param {string} id Unescaped ID.
-	   * @return {string} Markup string.
-	   */
-	  createMarkupForID: function createMarkupForID(id) {
-	    return DOMProperty.ID_ATTRIBUTE_NAME + "=" + quoteAttributeValueForBrowser(id);
-	  },
 	  /**
 	   * Sets the value for a property on a node.
 	   *
@@ -3552,7 +3557,7 @@
 				if (isStr(value)) {
 					var refKey = value;
 					var refValue = value;
-					props.dataset = (0, _component.collectRef)(refKey, refValue);
+					props.attributes['data-refid'] = (0, _component.collectRef)(refKey, refValue);
 					hasChange = true;
 				}
 			} else {
@@ -3577,7 +3582,8 @@
 			children[_key - 2] = arguments[_key];
 		}
 	
-		if (_component.Component.isPrototypeOf(tagName)) {
+		var isComponent = isFn(tagName) && isFn(tagName.prototype.render);
+		if (isComponent) {
 			return new _component.Widget(tagName, getProps(properties, children));
 		}
 		if (isFn(tagName)) {
@@ -3697,7 +3703,7 @@
 	var store = _util.info.store = {};
 	
 	var render = function render(vnode, container, callback) {
-		var id = container.dataset.referid;
+		var id = container.getAttribute(_util.ATTR_ID);
 		if (id) {
 			var prevVnode = store[id];
 			var patches = (0, _virtualDom.diff)(prevVnode, vnode);
@@ -3705,7 +3711,7 @@
 			store[id] = vnode;
 		} else {
 			var node = (0, _virtualDom.create)(vnode);
-			id = container.dataset.referid = (0, _util.getId)();
+			container.setAttribute(_util.ATTR_ID, id = (0, _util.getId)());
 			store[id] = vnode;
 			container.innerHTML = '';
 			container.appendChild(node);
@@ -3718,7 +3724,7 @@
 	
 	exports.render = render;
 	var unmount = function unmount(container) {
-		var id = container.dataset.referid;
+		var id = container.getAttribute(_util.ATTR_ID);
 		if (id) {
 			var prevVnode = store[id];
 			if (prevVnode) {
@@ -3726,7 +3732,6 @@
 				(0, _component.callUnmounts)(container);
 				container.innerHTML = '';
 			}
-			delete container.dataset.referid;
 		}
 	};
 	exports.unmount = unmount;
