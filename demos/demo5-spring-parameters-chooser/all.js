@@ -866,11 +866,6 @@
 			this.actions = store.actions;
 			this.props = props;
 			this.refs = {};
-			store.subscribe(function () {
-				if (store.getState() == null) {
-					debugger;
-				}
-			});
 		}
 	
 		Component.prototype.getDOMNode = function getDOMNode() {
@@ -950,9 +945,6 @@
 				return this.$store.getState();
 			},
 			set: function (nextState) {
-				if (nextState == null) {
-					debugger;
-				}
 				this.$store.replaceState(nextState, true);
 			}
 		}]);
