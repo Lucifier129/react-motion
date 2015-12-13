@@ -25,7 +25,6 @@ var entry = {
   'demo3-todomvc-list-transition': './demos/demo3-todomvc-list-transition/index.jsx',
   'demo4-photo-gallery': './demos/demo4-photo-gallery/index.jsx',
   'demo5-spring-parameters-chooser': './demos/demo5-spring-parameters-chooser/index.jsx',
-  'demo6': './demos/demo6/index.jsx',
   'demo7-water-ripples': './demos/demo7-water-ripples/index.jsx',
   'demo8-draggable-list': './demos/demo8-draggable-list/index.jsx',
 };
@@ -54,6 +53,7 @@ if (process.env.NODE_ENV === 'development') {
 module.exports = {
   devtool: devtool,
   entry: entry,
+  watch: true,
   output: {
     filename: '[name]/all.js',
     publicPath: '/demos/',
@@ -69,7 +69,7 @@ module.exports = {
       loaders: ['style', 'css']
     }],
     preLoaders: [
-      {test: /\.jsx?$/, loader: 'eslint', exclude: /build|lib|bower_components|node_modules/},
+      //{test: /\.jsx?$/, loader: 'eslint', exclude: /build|lib|bower_components|node_modules/},
     ],
     noParse: [
       path.join(__dirname, 'node_modules', 'babel-core', 'browser.min.js')
@@ -78,7 +78,7 @@ module.exports = {
   resolve: {
     extensions: ['', '.js', '.jsx'],
     alias: {
-      react: path.join(path.dirname(__dirname), 'refer-dom')
+      react: path.join(path.dirname(__dirname), 'react-lite/dist/react-lite')
     }
   },
   plugins: plugins,
